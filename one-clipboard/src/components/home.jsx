@@ -5,6 +5,7 @@ import { storeId, getId } from "../utils/IdManager";
 export default function Home() {
   const [id, setId] = useState("");
   const [text, setText] = useState("");
+  let lastPasteEventTime = Date.now();
   useEffect(() => {
     const fetchData = async () => {
       const id = await getId();
@@ -43,6 +44,15 @@ export default function Home() {
     });
 
     listen("paste-event", async (event) => {
+      const now = Date.now();
+
+      
+      if (now - lastPasteEventTime < 2000) {
+        console.log("Paste event rate limited");
+        lastPasteEventTime = Date.now();
+        return; 
+      }
+      
       console.log("Received paste event");
       const response = await fetch(
         "https://one-clipboard-server.vercel.app/api/paste-event",
@@ -59,12 +69,15 @@ export default function Home() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log("Pasted from server", data.text);
-        setText(data.text);
+
         emit("paste-response", data.text);
+        console.log("Pasted from server", data.text);
+
+        setText(data.text);
       } else {
         console.log("Failed to paste from server");
       }
+      lastPasteEventTime = Date.now();
     });
   });
   return (

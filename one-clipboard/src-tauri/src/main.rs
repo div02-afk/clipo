@@ -1,28 +1,108 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use rdev::{listen, Event};
-use std::thread;
-extern crate copypasta;
+use std::fs::{File, OpenOptions,remove_file};
 use std::thread::sleep;
-use std::time::Duration;
+extern crate copypasta;
 use copypasta::{ClipboardContext, ClipboardProvider};
-use std::fs::{File, OpenOptions};
+use enigo::{
+    Direction::{Click, Press, Release},
+    Enigo, Key, Keyboard, Settings,
+};
+use serde_json::Value;
+use std::error::Error;
 use std::io::{Read, Write};
 use tauri::api::path::document_dir;
-use reqwest::Client;
-use serde_json::json;
-use std::error::Error;
-use tauri::{Manager, Window,Wry};
+use tokio::runtime::Runtime;
+use tokio::task;
 
-// the payload type must implement `Serialize` and `Clone`.
 #[derive(Clone, serde::Serialize)]
-struct Payload {
-  message: String,
+struct ID {
+    id: String,
 }
+#[derive(Clone, serde::Serialize)]
+struct Content {
+    id: String,
+    text: String,
+}
+#[derive(Clone, serde::Serialize)]
+struct Text {
+    text: String,
+}
+
+async fn upload_clipboard_content(content: String) -> Result<(), Box<dyn Error>> {
+    let id = get_id().unwrap();
+    let client = reqwest::Client::new();
+    let _res = client
+        .post("https://one-clipboard-server.vercel.app/api/copy-event")
+        .json(&Content { id, text: content })
+        .send()
+        .await;
+    // println!("Response: {:?}", res);
+    Ok(())
+}
+
+async fn download_clipboard_content() -> Result<String, Box<dyn Error>> {
+    // Assuming get_id() is a function that returns Option<String>
+    let id = get_id().unwrap();
+
+    let client = reqwest::Client::new();
+    let res = client
+        .post("https://one-clipboard-server.vercel.app/api/paste-event")
+        .json(&ID { id })
+        .send()
+        .await?;
+
+    let text = res.text().await?;
+    let json_value: Value = serde_json::from_str(&text)?;
+
+    if let Some(text_value) = json_value.get("text") {
+        if let Some(text_str) = text_value.as_str() {
+            Ok(text_str.to_string())
+        } else {
+            Err("The 'text' key is not a string.".into())
+        }
+    } else {
+        Err("The 'text' key does not exist.".into())
+    }
+}
+async fn handle_event(event: Event) {
+    match event.name {
+        Some(name) => {
+            if name == "\u{3}" {
+                sleep(std::time::Duration::from_millis(200));
+                let mut ctx = ClipboardContext::new().unwrap();
+                let content = ctx.get_contents().unwrap();
+                
+                let _ = upload_clipboard_content(content).await;
+            }
+            if name == "\u{c}" {
+                let text = download_clipboard_content().await.unwrap();
+                let mut ctx = ClipboardContext::new().unwrap();
+                ctx.set_contents(text).unwrap();
+                let mut enigo = Enigo::new(&Settings::default()).unwrap();
+                
+                let _ =enigo.key(Key::Control, Press);
+                let _ =enigo.key(Key::Unicode('v'), Click);
+                let _ =enigo.key(Key::Control, Release);
+            }
+        }
+        None => (),
+    }
+}
+
 #[tauri::command]
 fn store_id(id: String) -> Result<(), String> {
-    let path = document_dir().map(|p| p.join("id.txt")).ok_or("Unable to get document directory")?;
-    let mut file = OpenOptions::new().write(true).create(true).open(&path)
+    let path = document_dir()
+        .map(|p| p.join("one-clipboard.oneclip"))
+        .ok_or("Unable to get document directory")?;
+    if path.exists() {
+        remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(&path)
         .map_err(|e| e.to_string())?;
     file.write_all(id.as_bytes()).map_err(|e| e.to_string())?;
     Ok(())
@@ -30,132 +110,34 @@ fn store_id(id: String) -> Result<(), String> {
 
 #[tauri::command]
 fn get_id() -> Result<String, String> {
-    let path = document_dir().map(|p| p.join("id.txt")).ok_or("Unable to get document directory")?;
+    let path = document_dir()
+        .map(|p| p.join("one-clipboard.oneclip"))
+        .ok_or("Unable to get document directory")?;
     let mut file = File::open(&path).map_err(|e| e.to_string())?;
     let mut id = String::new();
     file.read_to_string(&mut id).map_err(|e| e.to_string())?;
     Ok(id)
 }
 
-
-
-async fn send_copy_text(text:String,id:String) -> Result<(), Box<dyn std::error::Error>> {
-    let url = "localhost:3000/api/copy-event";
-    let post_data = json!({
-        "text":text,
-        "id":id
-    });
-    let post_data_string = serde_json::to_string(&post_data)?;
-    let response = Client::new()
-        .post(url)
-        .header("Content-Type", "application/json")
-        .body(post_data_string)
-        .send()
-        .await?;
-
-    // Check if the request was successful
-    if response.status().is_success() {
-        // Read the response body as text
-        let body = response.text().await?;
-        println!("Response Body: {}", body);
-    } else {
-        println!("Request failed with status: {}", response.status());
-    }
-
-    Ok(())
-    
-}
-fn result_to_string(result: Result<String, String>) -> String {
-    match result {
-        Ok(value) => value,
-        Err(error) => format!("Error: {}", error), // Handle the error as needed
-    }
-}
-fn callback(event: Event,main_window:Window) {
-    // if(event.name == "\u{3}"){
-    //     println!("Copied");
-    // }
-    // print!("My callback {:?}", event.name);
-    // println!( "{:?}",event.event_type);
-   
-
-    match event.name {
-        Some(string) => {
-            if string == "\u{3}" {
-                sleep(Duration::from_millis(400));
-                let mut ctx = ClipboardContext::new().unwrap();
-                let  content = ctx.get_contents().unwrap();
-                // let id = result_to_string(get_id());
-                main_window.emit("copy_event",Payload{message:content.into()}).unwrap();
-                // let _response  = send_copy_text(content,id);
-                
-                println!("User copied ");
-            }
-            else if string == "\u{16}" {
-                println!("user pasted");
-            }
-        },
-        None => (),
-    }
-    
-}
-
 fn main() {
-    
+    let runtime = Runtime::new().unwrap();
+    runtime.spawn(async move {
+        let listener = task::spawn_blocking(|| {
+            if let Err(error) = listen(event_handler) {
+                println!("Error: {:?}", error);
+            }
+        });
+
+        listener.await.unwrap();
+    });
     tauri::Builder::default()
-    .setup(|app| {
-        // `main` here is the window label; it is defined on the window creation or under `tauri.conf.json`
-        // the default value is `main`. note that it must be unique
-        let main_window = app.get_window("main").unwrap();
-        
-        // listen to the `event-name` (emitted on the `main` window)
-        let id = main_window.listen("event-name", |event| {
-            println!("got window event-name with payload {:?}", event.payload());
-        });
-        // unlisten to the event using the `id` returned on the `listen` function
-        // an `once` API is also exposed on the `Window` struct
-        let window_clone = main_window.clone();
-        thread::spawn(move || {
-            listen_for_copy_event(window_clone);
-        });
-        main_window.unlisten(id);
-  
-        // emit the `event-name` event to the `main` window
-        main_window.emit("event-name", Payload { message: "Tauri is awesome!".into() }).unwrap();
-        Ok(())
-      })
         .invoke_handler(tauri::generate_handler![store_id, get_id])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
-async fn handler(window:&Window<Wry>){
-    
-}
-
-fn listen_for_copy_event(window: Window<Wry>) {
-    listen(move |event: Event| {
-        // println!("{:?}",event.name);
-        match event.name {
-            Some(string) => {
-                if string == "\u{3}" {
-                    sleep(Duration::from_millis(400));
-                    let mut ctx = ClipboardContext::new().unwrap();
-                    let  content = ctx.get_contents().unwrap();
-                    println!("User copied ");
-                    send_result_to_frontend(&window,content,"copy-event");
-                    
-                }
-                else if string == "\u{16}" {
-                    println!("User pasted");
-                    send_result_to_frontend(&window,"".to_string(),"paste-event");
-                }
-            },
-            None => (),
-        }
-    }).unwrap();
-}
-
-fn send_result_to_frontend(window: &Window<Wry>, result: String,event:&str) {
-    window.emit(event, Some(result)).unwrap();
+fn event_handler(event: Event) {
+    tokio::spawn(async move {
+        handle_event(event).await;
+    });
 }
