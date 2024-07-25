@@ -1,20 +1,24 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use rdev::{listen, Event};
-use std::fs::{File, OpenOptions,remove_file};
+use std::fs::{remove_file, File, OpenOptions};
 use std::thread::sleep;
+use tauri::{AppHandle, Manager};
 extern crate copypasta;
 use copypasta::{ClipboardContext, ClipboardProvider};
 use enigo::{
     Direction::{Click, Press, Release},
     Enigo, Key, Keyboard, Settings,
 };
+use once_cell::sync::Lazy;
 use serde_json::Value;
 use std::error::Error;
 use std::io::{Read, Write};
+use std::sync::{Arc, Mutex};
 use tauri::api::path::document_dir;
 use tokio::runtime::Runtime;
 use tokio::task;
+use tokio::time::Duration;
 
 #[derive(Clone, serde::Serialize)]
 struct ID {
@@ -29,6 +33,9 @@ struct Content {
 struct Text {
     text: String,
 }
+
+static GLOBAL_APP_HANDLE: Lazy<Arc<Mutex<Option<AppHandle>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(None)));
 
 async fn upload_clipboard_content(content: String) -> Result<(), Box<dyn Error>> {
     let id = get_id().unwrap();
@@ -67,27 +74,37 @@ async fn download_clipboard_content() -> Result<String, Box<dyn Error>> {
     }
 }
 async fn handle_event(event: Event) {
-    match event.name {
-        Some(name) => {
-            if name == "\u{3}" {
-                sleep(std::time::Duration::from_millis(200));
-                let mut ctx = ClipboardContext::new().unwrap();
-                let content = ctx.get_contents().unwrap();
-                
-                let _ = upload_clipboard_content(content).await;
+    let app_handle = {
+        let lock = GLOBAL_APP_HANDLE.lock().unwrap();
+        lock.clone()
+    };
+    if let Some(app_handle) = app_handle {
+        match event.name {
+            Some(name) => {
+                if name == "\u{3}" {
+                    sleep(std::time::Duration::from_millis(1000));
+                    let mut ctx = ClipboardContext::new().unwrap();
+                    let content = ctx.get_contents().unwrap();
+                    println!("Content: {:?}", content.clone());
+                    let _ = upload_clipboard_content(content).await;
+                }
+                if name == "\u{c}" {
+                    sleep(std::time::Duration::from_millis(1000));
+                    let text = download_clipboard_content().await.unwrap();
+                    let mut ctx = ClipboardContext::new().unwrap();
+                    ctx.set_contents(text.clone()).unwrap();
+                    let mut enigo = Enigo::new(&Settings::default()).unwrap();
+
+                    let _ = enigo.key(Key::Control, Press);
+                    let _ = enigo.key(Key::Unicode('v'), Click);
+                    let _ = enigo.key(Key::Control, Release);
+                    app_handle
+                        .emit_to("main","paste-event", Some(Text { text }))
+                        .unwrap();
+                }
             }
-            if name == "\u{c}" {
-                let text = download_clipboard_content().await.unwrap();
-                let mut ctx = ClipboardContext::new().unwrap();
-                ctx.set_contents(text).unwrap();
-                let mut enigo = Enigo::new(&Settings::default()).unwrap();
-                
-                let _ =enigo.key(Key::Control, Press);
-                let _ =enigo.key(Key::Unicode('v'), Click);
-                let _ =enigo.key(Key::Control, Release);
-            }
+            None => (),
         }
-        None => (),
     }
 }
 
@@ -131,6 +148,12 @@ fn main() {
         listener.await.unwrap();
     });
     tauri::Builder::default()
+        .setup(move |app| {
+            let app_handle = app.handle();
+            let mut lock = GLOBAL_APP_HANDLE.lock().unwrap();
+            *lock = Some(app_handle.clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![store_id, get_id])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

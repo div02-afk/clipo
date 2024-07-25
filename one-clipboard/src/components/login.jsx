@@ -5,7 +5,7 @@ export default function Login() {
   const check = async () => {
     const id = await getId();
     if (id != "") {
-      // window.location.href = "/home";
+      window.location.href = "/home";
       console.log("Already logged in");
     }
   };
