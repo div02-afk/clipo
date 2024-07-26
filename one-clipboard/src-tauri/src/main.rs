@@ -10,6 +10,7 @@ use enigo::{
     Direction::{Click, Press, Release},
     Enigo, Key, Keyboard, Settings,
 };
+use open;
 use once_cell::sync::Lazy;
 use serde_json::Value;
 use std::error::Error;
@@ -18,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use tauri::api::path::document_dir;
 use tokio::runtime::Runtime;
 use tokio::task;
-use tokio::time::Duration;
+
 
 #[derive(Clone, serde::Serialize)]
 struct ID {
@@ -109,6 +110,12 @@ async fn handle_event(event: Event) {
 }
 
 #[tauri::command]
+fn open_in_browser(url: String) {
+    println!("Opening in browser: {}", url);
+    open::that(url).unwrap();
+}
+
+#[tauri::command]
 fn store_id(id: String) -> Result<(), String> {
     let path = document_dir()
         .map(|p| p.join("one-clipboard.oneclip"))
@@ -154,7 +161,7 @@ fn main() {
             *lock = Some(app_handle.clone());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![store_id, get_id])
+        .invoke_handler(tauri::generate_handler![store_id, get_id,open_in_browser])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
