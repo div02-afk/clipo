@@ -1,18 +1,23 @@
-import React, { useRef } from "react";
-import { invoke } from "@tauri-apps/api/tauri";
+import React, { useEffect, useRef } from "react";
 import { storeId, getId } from "../utils/IdManager";
 import { motion } from "framer-motion";
-import { Grid } from "react-loader-spinner";
+import { Suspense } from "react";
+
+import Loader from "../components/loader";
 export default function Login() {
-  const [showLoader, setShowLoader] = React.useState(false);
-  const check = async () => {
-    const id = await getId();
-    if (id != "") {
-      window.location.href = "/home";
-      console.log("Already logged in");
-    }
-  };
-  check();
+  const [showLoader, setShowLoader] = React.useState(true);
+  useEffect(() => {
+    const check = async () => {
+      const id = await getId();
+      if (id != "" && id) {
+        window.location.href = "/home";
+        console.log("Already logged in");
+      } else {
+        setShowLoader(false);
+      }
+    };
+    check();
+  }, []);
 
   const inputRef = useRef(null);
   const submit = async () => {
@@ -33,15 +38,11 @@ export default function Login() {
   };
 
   if (showLoader) {
-    return (
-      <div className="flex items-center flex-col text-center select-none justify-center align-middle bg-[#101010] p-10 h-full min-h-screen text-[rgba(255,255,255,0.5)] overflow-x-hidden">
-        <Grid type="ThreeDots" color="rgba(255,255,255,0.4)" height={40} width={40} />
-      </div>
-    );
+    return <Loader />;
   }
 
   return (
-    <>
+    <Suspense fallback={<Loader />}>
       <div className="flex flex-col text-center select-none  bg-[#101010] h-full min-h-screen text-[rgba(255,255,255,0.5)] overflow-x-hidden">
         <h1 className="text-4xl text-center p-4 mt-20">Get Started</h1>
 
@@ -87,6 +88,6 @@ export default function Login() {
           </motion.button>
         </div>
       </div>
-    </>
+    </Suspense>
   );
 }

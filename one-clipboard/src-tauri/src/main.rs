@@ -118,7 +118,7 @@ fn open_in_browser(url: String) {
 #[tauri::command]
 fn store_id(id: String) -> Result<(), String> {
     let path = document_dir()
-        .map(|p| p.join("one-clipboard.oneclip"))
+        .map(|p| p.join("clipo/id.clipo"))
         .ok_or("Unable to get document directory")?;
     if path.exists() {
         remove_file(&path).map_err(|e| e.to_string())?;
@@ -135,7 +135,7 @@ fn store_id(id: String) -> Result<(), String> {
 #[tauri::command]
 fn get_id() -> Result<String, String> {
     let path = document_dir()
-        .map(|p| p.join("one-clipboard.oneclip"))
+        .map(|p| p.join("clipo/id.clipo"))
         .ok_or("Unable to get document directory")?;
     let mut file = File::open(&path).map_err(|e| e.to_string())?;
     let mut id = String::new();

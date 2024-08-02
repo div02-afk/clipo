@@ -1,21 +1,19 @@
-import { emit, listen } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 import { storeId, getId } from "../utils/IdManager";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import Notification from "../components/notification";
 import shortener from "../utils/shortener";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faGithub } from "@fortawesome/free-brands-svg-icons";
 import {
   faDeleteLeft,
   faImagePortrait,
 } from "@fortawesome/free-solid-svg-icons";
-
-import { invoke } from "@tauri-apps/api/tauri";
+import { storeHistory, getHistory } from "../utils/historyManager";
+import GitHubLink from "../components/githublink";
 
 export default function Home() {
   const [id, setId] = useState("123");
-
   const [pasteHistory, setPasteHistory] = useState([]);
   const [isVisible, setIsVisible] = useState(false);
   const [getIdButton, setGetIdButton] = useState("");
@@ -29,11 +27,21 @@ export default function Home() {
       }
       setId(id);
     };
+    const fetchHistory = async () => {
+      console.log("Fetching History");
+      const history = await getHistory();
+      console.log("History", history);
+      console.log(history);
+      if (history) {
+        setPasteHistory(history);
+      }
+    };
+    fetchHistory();
     fetchData();
   }, []);
 
   useEffect(() => {
-    listen("paste-event", async (event) => {
+    const unlisten =listen("paste-event", async (event) => {
       console.log("Pasted from server", event.payload.text);
       const now = Date.now();
       if (now - lastEventTime < 2000) {
@@ -43,13 +51,15 @@ export default function Home() {
       const text = event.payload.text;
       if (text === last) return;
       if (pasteHistory.includes(text)) return;
-      // console.log("Pasted from server", text);
+
       lastEventTime = Date.now();
       last = text;
       console.log(pasteHistory);
       setPasteHistory((prev) => [text, ...prev]);
     });
-    return () => {};
+    return () => {
+      unlisten.then((f) => f());
+    };
   }, []);
   useEffect(() => {
     if (isVisible) {
@@ -67,16 +77,21 @@ export default function Home() {
     }
   }, [getIdButton]);
 
+  // useEffect(() => {
+  //   const temp = pasteHistory;
+  //   for (let i = 1; i < pasteHistory.length; i++) {
+  //     if (temp[i] === temp[i - 1]) {
+  //       temp.splice(i, 1);
+  //       i--;
+  //     }
+  //   }
+  //   storeHistory(pasteHistory);
+  //   setPasteHistory(temp);
+  // }, [pasteHistory]);
   useEffect(() => {
-    const temp = pasteHistory;
-    for (let i = 1; i < pasteHistory.length; i++) {
-      if (temp[i] === temp[i - 1]) {
-        temp.splice(i, 1);
-        i--;
-      }
-    }
-    setPasteHistory(temp);
+    storeHistory(pasteHistory);
   }, [pasteHistory]);
+
   return (
     <div className="flex flex-col text-center select-none bg-[#101010] h-full min-h-screen text-[rgba(255,255,255,0.5)] overflow-x-hidden">
       <div className="flex justify-between p-4 mb-40">
@@ -100,6 +115,7 @@ export default function Home() {
             onClick={async () => {
               navigator.clipboard.writeText(id);
               setGetIdButton(true);
+              
             }}
           >
             <FontAwesomeIcon icon={faImagePortrait} className="text-2xl" />
@@ -107,7 +123,6 @@ export default function Home() {
         </div>
       </div>
       <div
-        layout
         transition={{
           opacity: { duration: 1, ease: "linear" },
           layout: { duration: 0.3, ease: "easeInOut", bounce: 0.5 },
@@ -152,46 +167,7 @@ export default function Home() {
       </div>
       <Notification isVisible={isVisible} text={"Copied to Clipboard"} />
       <Notification isVisible={getIdButton} id={`Copied to Clipboard: ${id}`} />
-      <motion.div
-        whileTap={{ scale: 0.95 }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        whileHover={{
-          scale: 1.2,
-          color: "#f1f1f1",
-          transition: { duration: 0.1 },
-        }}
-        className="fixed bottom-5 left-6"
-        onClick={async () => {
-          const url = "https://github.com/div02-afk/one-clipboard-tauri";
-          await invoke(
-            "open_in_browser",
-            {url}
-          );
-        }}
-      >
-        <FontAwesomeIcon icon={faGithub} size="2x" />
-      </motion.div>
+      <GitHubLink />
     </div>
   );
 }
-
-// {pasteHistory.map((item, index) => (
-//   <motion.div
-//     animate={{ opacity: 1, y: 0, transition: { duration: 0.3 } }}
-//     whileTap={{ scale: 0.95 }}
-//     whileHover={{
-//       background: "rgba(255,255,255,0.1)",
-//       fontSize: "24px",
-//       transition: { duration: 0.1 },
-//     }}
-//     onClick={() => {
-//       navigator.clipboard.writeText(item);
-//       setIsVisible(true);
-//     }}
-//     key={index}
-//     className="border-2 border-[rgba(255,255,255,0.3)] rounded-xl bg-[rgba(255,255,255,0.02)] w-3/4 p-4 pl-10 mt-4 text-xl max-w-[600px] shadow-sm"
-//   >
-//     <>{item}</>
-//   </motion.div>
-// ))}
