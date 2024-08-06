@@ -1,26 +1,27 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use rdev::{listen, Event,EventType};
+use rdev::{listen, Event, EventType};
 use std::fs::{remove_file, File, OpenOptions};
 use std::thread::sleep;
-use tauri::{AppHandle, Manager};
 extern crate copypasta;
 use copypasta::{ClipboardContext, ClipboardProvider};
 use enigo::{
     Direction::{Click, Press, Release},
     Enigo, Key, Keyboard, Settings,
 };
-use open;
 use once_cell::sync::Lazy;
+use open;
 use serde_json::Value;
 use std::error::Error;
 use std::io::{Read, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::api::path::document_dir;
+use tauri::{
+    api::path::document_dir, AppHandle, CustomMenuItem, Manager, SystemTray, SystemTrayEvent,
+    SystemTrayMenu, SystemTrayMenuItem,
+};
 use tokio::runtime::Runtime;
 use tokio::task;
-use std::sync::atomic::{AtomicBool, Ordering};
-
 
 #[derive(Clone, serde::Serialize)]
 struct ID {
@@ -75,93 +76,87 @@ async fn download_clipboard_content() -> Result<String, Box<dyn Error>> {
         Err("The 'text' key does not exist.".into())
     }
 }
-async fn handle_event(event: Event,ctrl_pressed: &Arc<AtomicBool>) {
+async fn handle_event(event: Event, ctrl_pressed: &Arc<AtomicBool>) {
     let app_handle = {
         let lock = GLOBAL_APP_HANDLE.lock().unwrap();
         lock.clone()
     };
-    
-    
+
     if let Some(app_handle) = app_handle {
-
         match event.event_type {
-        EventType::KeyPress(key) => {
-            if key == rdev::Key::ControlLeft || key == rdev::Key::ControlRight {
-                // Handle Control key press
-                
-                ctrl_pressed.store(true, Ordering::SeqCst);
-                // println!("Control key pressed");
-            }
-            else if key == rdev::Key::KeyC && ctrl_pressed.load(Ordering::SeqCst) {
-                // Handle Control key release
-                sleep(std::time::Duration::from_millis(1000));
-                let mut ctx = ClipboardContext::new().unwrap();
-                let content = ctx.get_contents().unwrap();
-                println!("Copied: {:?}", content.clone());
-                let _ = upload_clipboard_content(content).await;
-            }
-            else if key == rdev::Key::KeyL && ctrl_pressed.load(Ordering::SeqCst) {
-                sleep(std::time::Duration::from_millis(1000));
-                let text = download_clipboard_content().await.unwrap();
-                let mut ctx = ClipboardContext::new().unwrap();
-                ctx.set_contents(text.clone()).unwrap();
-                let mut enigo = Enigo::new(&Settings::default()).unwrap();
-                println!("Pasted: {:?}", text);
-                let _ = enigo.key(Key::Control, Press);
-                let _ = enigo.key(Key::Unicode('v'), Click);
-                let _ = enigo.key(Key::Control, Release);
-                app_handle
-                    .emit_to("main","paste-event", Some(Text { text }))
-                    .unwrap();
-            }
-            // println!("Key: {:?}", key);
-            // println!("Control key pressed: {:?}", ctrl_pressed.load(Ordering::SeqCst));
-        }
-       
-      
-        EventType::KeyRelease(key) => {
-            if key == rdev::Key::ControlLeft || key == rdev::Key::ControlRight {
-                // Handle Control key release
-                ctrl_pressed.store(false, Ordering::SeqCst);
-                
-                // println!("Control key released");
-            }
-        }
-        _ => {}
-    }
-}
-        // match event.event_type {
-            
-        
-        // }
-        // println!("Event: {:?}", event);
-        // match event.name {
-        //     Some(name) => {
-        //         if name == "\u{3}" {
-        //             sleep(std::time::Duration::from_millis(1000));
-        //             let mut ctx = ClipboardContext::new().unwrap();
-        //             let content = ctx.get_contents().unwrap();
-        //             println!("Content: {:?}", content.clone());
-        //             let _ = upload_clipboard_content(content).await;
-        //         }
-        //         if name == "\u{c}" {
-        //             sleep(std::time::Duration::from_millis(1000));
-        //             let text = download_clipboard_content().await.unwrap();
-        //             let mut ctx = ClipboardContext::new().unwrap();
-        //             ctx.set_contents(text.clone()).unwrap();
-        //             let mut enigo = Enigo::new(&Settings::default()).unwrap();
+            EventType::KeyPress(key) => {
+                if key == rdev::Key::ControlLeft || key == rdev::Key::ControlRight {
+                    // Handle Control key press
 
-        //             let _ = enigo.key(Key::Control, Press);
-        //             let _ = enigo.key(Key::Unicode('v'), Click);
-        //             let _ = enigo.key(Key::Control, Release);
-        //             app_handle
-        //                 .emit_to("main","paste-event", Some(Text { text }))
-        //                 .unwrap();
-        //         }
-        //     }
-        //     None => (),
-        // }
-    
+                    ctrl_pressed.store(true, Ordering::SeqCst);
+                    // println!("Control key pressed");
+                } else if key == rdev::Key::KeyC && ctrl_pressed.load(Ordering::SeqCst) {
+                    // Handle Control key release
+                    sleep(std::time::Duration::from_millis(1000));
+                    let mut ctx = ClipboardContext::new().unwrap();
+                    let content = ctx.get_contents().unwrap();
+                    println!("Copied: {:?}", content.clone());
+                    let _ = upload_clipboard_content(content).await;
+                } else if key == rdev::Key::KeyL && ctrl_pressed.load(Ordering::SeqCst) {
+                    sleep(std::time::Duration::from_millis(1000));
+                    let text = download_clipboard_content().await.unwrap();
+                    let mut ctx = ClipboardContext::new().unwrap();
+                    ctx.set_contents(text.clone()).unwrap();
+                    let mut enigo = Enigo::new(&Settings::default()).unwrap();
+                    println!("Pasted: {:?}", text);
+                    let _ = enigo.key(Key::Control, Press);
+                    let _ = enigo.key(Key::Unicode('v'), Click);
+                    let _ = enigo.key(Key::Control, Release);
+                    app_handle
+                        .emit_to("main", "paste-event", Some(Text { text }))
+                        .unwrap();
+                }
+                // println!("Key: {:?}", key);
+                // println!("Control key pressed: {:?}", ctrl_pressed.load(Ordering::SeqCst));
+            }
+
+            EventType::KeyRelease(key) => {
+                if key == rdev::Key::ControlLeft || key == rdev::Key::ControlRight {
+                    // Handle Control key release
+                    ctrl_pressed.store(false, Ordering::SeqCst);
+
+                    // println!("Control key released");
+                }
+            }
+            _ => {}
+        }
+    }
+    // match event.event_type {
+
+    // }
+    // println!("Event: {:?}", event);
+    // match event.name {
+    //     Some(name) => {
+    //         if name == "\u{3}" {
+    //             sleep(std::time::Duration::from_millis(1000));
+    //             let mut ctx = ClipboardContext::new().unwrap();
+    //             let content = ctx.get_contents().unwrap();
+    //             println!("Content: {:?}", content.clone());
+    //             let _ = upload_clipboard_content(content).await;
+    //         }
+    //         if name == "\u{c}" {
+    //             sleep(std::time::Duration::from_millis(1000));
+    //             let text = download_clipboard_content().await.unwrap();
+    //             let mut ctx = ClipboardContext::new().unwrap();
+    //             ctx.set_contents(text.clone()).unwrap();
+    //             let mut enigo = Enigo::new(&Settings::default()).unwrap();
+
+    //             let _ = enigo.key(Key::Control, Press);
+    //             let _ = enigo.key(Key::Unicode('v'), Click);
+    //             let _ = enigo.key(Key::Control, Release);
+    //             app_handle
+    //                 .emit_to("main","paste-event", Some(Text { text }))
+    //                 .unwrap();
+    //         }
+    //     }
+    //     None => (),
+    // }
+
     // }
 }
 
@@ -200,6 +195,14 @@ fn get_id() -> Result<String, String> {
 }
 
 fn main() {
+    let quit = CustomMenuItem::new("quit".to_string(), "Quit");
+    let hide_show = CustomMenuItem::new("hide_show".to_string(), "Hide");
+
+    let tray_menu = SystemTrayMenu::new()
+        .add_item(quit)
+        .add_native_item(SystemTrayMenuItem::Separator)
+        .add_item(hide_show);
+
     let ctrl_pressed = Arc::new(AtomicBool::new(false));
     let ctrl_pressed_clone = Arc::clone(&ctrl_pressed);
     let runtime = Runtime::new().unwrap();
@@ -218,22 +221,43 @@ fn main() {
         listener.await.unwrap();
     });
     tauri::Builder::default()
+        .system_tray(SystemTray::new().with_menu(tray_menu))
+        .on_system_tray_event(|app, event| match event {
+            SystemTrayEvent::MenuItemClick { id, .. } => {
+                let item_handle = app.tray_handle().get_item(&id);
+                let window = app.get_window("main").unwrap();
+                match id.as_str() {
+                    "hide_show" => {
+                        if window.is_visible().unwrap() {
+                            window.hide().unwrap();
+                            item_handle.set_title("Show").unwrap();
+                        } else {
+                            window.show().unwrap();
+                            item_handle.set_title("Hide").unwrap();
+                        }
+                    }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        })
         .setup(move |app| {
             let app_handle = app.handle();
             let mut lock = GLOBAL_APP_HANDLE.lock().unwrap();
             *lock = Some(app_handle.clone());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![store_id, get_id,open_in_browser])
+        .invoke_handler(tauri::generate_handler![store_id, get_id, open_in_browser])
+        .on_window_event(|event| match event.event() {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                event.window().hide().unwrap();
+                api.prevent_close();
+            }
+            _ => {}
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-fn event_handler(event: Event) {
-    let ctrl_pressed = Arc::new(AtomicBool::new(false));
-    let ctrl_pressed_clone = Arc::clone(&ctrl_pressed);
-    tokio::spawn(async move {
-        let ctrl_pressed_clone = Arc::clone(&ctrl_pressed_clone);
-        handle_event(event, &ctrl_pressed_clone).await;
-    });
 }

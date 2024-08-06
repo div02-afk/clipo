@@ -11,6 +11,10 @@
     "version": "1.0.0"
   },
   "tauri": {
+    "systemTray": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true
+    },
     "allowlist": {
       "all": false,
       "shell": {
@@ -30,6 +34,7 @@
         "scope": ["$DOCUMENT/*","$DOCUMENT/clipo/*"],
         "writeFile": true
       },
+      
       "path": {
         "all": true
       },
