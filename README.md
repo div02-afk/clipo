@@ -10,6 +10,7 @@ Clipo is a powerful clipboard syncing application that allows you to sync your c
 - **One-Time ID Access**: Access your shared clipboard using a one-time ID for enhanced security.
 - **Built with Tauri**: Lightweight and efficient application built with Tauri.
 - **Node.js and MongoDB Backend**: Robust backend using Node.js and MongoDB.
+- **Background Operation and System Tray support**: Runs in the background, allowing clipboard syncing without interrupting your workflow.
 
 ### Installation
 
