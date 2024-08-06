@@ -1,4 +1,4 @@
-# Clipo
+# Clipo ![Clipo](https://github.com/div02-afk/clipo/blob/main/app-icon.png)
 
 Clipo is a powerful clipboard syncing application that allows you to sync your clipboard between any number of devices seamlessly. With Clipo, you can copy and paste across devices effortlessly, ensuring you always have your important data at your fingertips.
 
