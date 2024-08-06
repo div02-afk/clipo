@@ -16,7 +16,7 @@ Clipo is a powerful clipboard syncing application that allows you to sync your c
 
 1. **Clone the repository**:
     ```sh
-    git clone https://github.com/div02-afk/clipo.git
+    git clone https://github.com/your-username/clipo.git
     cd clipo
     ```
 
