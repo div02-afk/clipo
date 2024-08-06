@@ -26,11 +26,10 @@ Clipo is a powerful clipboard syncing application that allows you to sync your c
 2. **Install dependencies**:
     ```sh
     npm install
-    `
+    
 3. **Run**:
    ```sh
    npm run tauri dev
-   `
 
 ## Usage
 
